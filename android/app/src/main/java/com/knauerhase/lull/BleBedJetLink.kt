@@ -14,16 +14,28 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import com.knauerhase.lull.bedjet.Mode
 import com.knauerhase.lull.bedjet.V2
+import com.knauerhase.lull.bedjet.V2Info
 import com.knauerhase.lull.bedjet.V2Status
 import com.knauerhase.lull.bedjet.V3
+import com.knauerhase.lull.bedjet.V3Step
+import com.knauerhase.lull.bedjet.maxMinutes
 import com.knauerhase.lull.bedjet.maxMinutes
 import com.knauerhase.lull.bedjet.temperatureRange
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import java.time.LocalTime
 import java.util.UUID
 
 /**
@@ -48,6 +60,10 @@ class BleBedJetLink(context: Context) : BedJetLink {
     private var isV2 = false
     private var v2Status: V2Status? = null
     private var uartBuffer = ByteArray(0)
+    private var v2Info: V2Info? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    // Bluetooth callbacks arrive on a binder thread unless a handler is given, so they run on the main thread.
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     // Android allows one GATT operation at a time, so writes and descriptor setup go through this queue.
     private val operations = ArrayDeque<(BluetoothGatt) -> Boolean>()
@@ -81,7 +97,14 @@ class BleBedJetLink(context: Context) : BedJetLink {
             if (!name.uppercase().startsWith("BEDJET")) return
             adapter.bluetoothLeScanner?.stopScan(this)
             _state.update { it.copy(connection = Connection.CONNECTING) }
-            gatt = result.device.connectGatt(appContext, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+            gatt = result.device.connectGatt(
+                appContext,
+                false,
+                gattCallback,
+                BluetoothDevice.TRANSPORT_LE,
+                BluetoothDevice.PHY_LE_1M_MASK,
+                mainHandler,
+            )
         }
 
         override fun onScanFailed(errorCode: Int) {
@@ -161,10 +184,67 @@ class BleBedJetLink(context: Context) : BedJetLink {
     // MARK: Commands
 
     override fun setMode(mode: Mode) {
-        if (isV2) {
-            V2.button(mode, _state.value.mode)?.let(::send)
-        } else {
-            V3.setMode(mode)?.let(::send)
+        val command = if (isV2) V2.button(mode, _state.value.mode) else V3.setMode(mode)
+        command?.let(::send)
+        // Switching on without a schedule runs as long as the mode allows, up to 10 hours. The unit's timer is set
+        // once it has started, so the change waits a moment for the unit's status to catch up.
+        if (command != null && mode != Mode.STANDBY) {
+            scope.launch {
+                delay(1_200)
+                setRuntime(minOf(mode.maxMinutes, MAX_SCHEDULE_MINUTES))
+            }
+        }
+    }
+
+    override fun startSchedule(schedule: Schedule, slot: Int) {
+        if (_state.value.connection != Connection.READY) return
+        val problem = schedule.problemFor(isV2)
+        if (problem != null) {
+            _state.update { it.copy(note = problem) }
+            return
+        }
+        if (isV2) startSequence(schedule) else startProgram(schedule, slot)
+    }
+
+    /** A BedJet 3 keeps the schedule in one of its program slots and starts that slot. */
+    private fun startProgram(schedule: Schedule, slot: Int) {
+        val steps = schedule.phases.map {
+            V3Step(it.mode, it.fanStep, it.temperature, hours = it.minutes / 60, minutes = it.minutes % 60)
+        }
+        val now = LocalTime.now()
+        scope.launch {
+            send(V3.setClock(now.hour, now.minute))
+            V3.writeProgram(slot, steps).forEach(::send)
+            send(V3.nameProgram(slot, schedule.name))
+            delay(300)
+            send(V3.startProgram(slot))
+        }
+    }
+
+    /** A BedJet V2 holds one sequence, written step by step and then run. The official app waits 200 ms between writes. */
+    private fun startSequence(schedule: Schedule) {
+        val info = v2Info ?: run {
+            _state.update { it.copy(note = "Still reading the BedJet's firmware. Try again in a moment.") }
+            return
+        }
+        if (!info.runsSequences) {
+            _state.update {
+                it.copy(note = "This BedJet V2 needs a firmware update before it can run schedules. Update it in the official BedJet app.")
+            }
+            return
+        }
+        val now = LocalTime.now()
+        scope.launch {
+            send(V2.clearSequence())
+            delay(200)
+            schedule.phases.forEachIndexed { index, phase ->
+                send(V2.writeStep(phase.mode, phase.fanStep, phase.temperature, phase.minutes, index, info.extendedSequences))
+                delay(200)
+            }
+            send(V2.tagSequence())
+            delay(200)
+            val time = Triple(now.hour, now.minute, now.second).takeIf { info.extendedSequences }
+            send(V2.runSequence(time, info.extendedSequences))
         }
     }
 
@@ -205,20 +285,21 @@ class BleBedJetLink(context: Context) : BedJetLink {
             val (packets, rest) = V2.takePackets(uartBuffer)
             uartBuffer = rest
             for (packet in packets) {
+                V2.reply(0x0B, packet)?.let { V2.parseInfo(it) }?.let { v2Info = it }
                 V2.parseStatus(packet)?.let { status ->
                     v2Status = status
-                    publish(status.mode, status.actual, status.target, status.fanStep, status.remainingSeconds)
+                    publish(status.mode, status.actual, status.target, status.fanStep, status.remainingSeconds, status.programStep)
                 }
             }
         } else if (value.size >= 20 && value[1].toInt() == 0x56 && value[3].toInt() == 1) {
             // Same check as Codec.isStatusStart in the iOS app. Continuation chunks are ignored.
             V3.parseStatus(value)?.let { status ->
-                publish(status.mode, status.actual, status.target, status.fanStep, status.remainingSeconds)
+                publish(status.mode, status.actual, status.target, status.fanStep, status.remainingSeconds, status.programStep ?: 0)
             }
         }
     }
 
-    private fun publish(mode: Mode, actual: Int, target: Int, fanStep: Int, remaining: Int) {
+    private fun publish(mode: Mode, actual: Int, target: Int, fanStep: Int, remaining: Int, programStep: Int) {
         _state.update {
             it.copy(
                 mode = mode,
@@ -226,6 +307,7 @@ class BleBedJetLink(context: Context) : BedJetLink {
                 targetHalfDegrees = target,
                 fanStep = fanStep,
                 remainingSeconds = remaining,
+                programStep = programStep,
                 note = null,
             )
         }
@@ -285,6 +367,8 @@ class BleBedJetLink(context: Context) : BedJetLink {
         notifyCharacteristic = null
         v2Status = null
         uartBuffer = ByteArray(0)
+        v2Info = null
+        scope.coroutineContext.cancelChildren()
         operations.clear()
         busy = false
     }

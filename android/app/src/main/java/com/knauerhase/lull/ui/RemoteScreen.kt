@@ -64,6 +64,16 @@ fun RemoteScreen(link: BedJetLink, state: BedJetState) {
     ) {
         ClimateOrb(state)
 
+        if (state.programStep > 0) {
+            Text(
+                text = "Schedule running, phase ${state.programStep}. Choosing a mode here stops it.",
+                fontSize = 13.sp,
+                color = LullColors.Secondary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
         ModeGrid(
             selected = mode,
             enabled = enabled,
@@ -144,7 +154,7 @@ private fun ClimateOrb(state: BedJetState) {
 }
 
 @Composable
-private fun Eyebrow(text: String) {
+fun Eyebrow(text: String) {
     Text(text = text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = LullColors.Secondary)
 }
 
@@ -171,7 +181,7 @@ private fun ModeGrid(selected: Mode, enabled: Boolean, onSelect: (Mode) -> Unit)
 }
 
 @Composable
-private fun ModeTile(
+fun ModeTile(
     label: String,
     tint: Color,
     selected: Boolean,
@@ -197,7 +207,7 @@ private fun ModeTile(
 }
 
 @Composable
-private fun Card(content: @Composable () -> Unit) {
+fun Card(content: @Composable () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -276,7 +286,7 @@ private fun RuntimeControl(state: BedJetState, enabled: Boolean, tint: Color, on
 }
 
 @Composable
-private fun ReadoutRow(title: String, value: String) {
+fun ReadoutRow(title: String, value: String) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
         Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = LullColors.Secondary)
         Spacer(Modifier.weight(1f))
@@ -285,7 +295,7 @@ private fun ReadoutRow(title: String, value: String) {
 }
 
 @Composable
-private fun LabeledSlider(
+fun LabeledSlider(
     title: String,
     valueText: String,
     value: Float,
@@ -318,14 +328,14 @@ private fun LabeledSlider(
     }
 }
 
-private fun modeLabel(mode: Mode): String = when (mode) {
+fun modeLabel(mode: Mode): String = when (mode) {
     Mode.COOL -> "Cool"
     Mode.HEAT -> "Heat"
     Mode.EXTENDED_HEAT -> "Gentle heat"
     Mode.TURBO -> "Turbo"
     Mode.DRY -> "Dry"
     Mode.STANDBY -> "Off"
-    Mode.WAIT -> "Wait"
+    Mode.WAIT -> "Pause"
 }
 
 private fun connectionText(state: BedJetState): String = when (state.connection) {
@@ -341,9 +351,9 @@ private fun BedJetState.fanPercent(): Int = (fanStep + 1) * 5
 private fun BedJetState.isV2(): Boolean = generation == "BedJet V2"
 
 /** Half degrees Celsius to whole degrees Fahrenheit, as the iOS app shows them. */
-private fun fahrenheit(halfDegrees: Int): Int = ((halfDegrees / 2.0) * 9 / 5 + 32).roundToInt()
+fun fahrenheit(halfDegrees: Int): Int = ((halfDegrees / 2.0) * 9 / 5 + 32).roundToInt()
 
-private fun formatDuration(minutes: Int): String {
+fun formatDuration(minutes: Int): String {
     val hours = minutes / 60
     val rest = minutes % 60
     return when {

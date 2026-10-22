@@ -32,7 +32,8 @@ class DemoBedJetLink : BedJetLink {
             current.copy(
                 mode = next,
                 targetHalfDegrees = current.targetHalfDegrees.coerceIn(temperatureRange(next, v2 = false)),
-                remainingSeconds = if (next == Mode.STANDBY) 0 else maxOf(current.remainingSeconds, 60 * 60).coerceAtMost(next.maxMinutes * 60),
+                remainingSeconds = if (next == Mode.STANDBY) 0 else minOf(next.maxMinutes, MAX_SCHEDULE_MINUTES) * 60,
+                programStep = 0,
             )
         }
     }
@@ -47,5 +48,19 @@ class DemoBedJetLink : BedJetLink {
 
     override fun setRuntime(minutes: Int) {
         _state.update { it.copy(remainingSeconds = minutes.coerceIn(1, it.mode.maxMinutes) * 60) }
+    }
+
+    override fun startSchedule(schedule: Schedule, slot: Int) {
+        val first = schedule.phases.firstOrNull() ?: return
+        _state.update {
+            it.copy(
+                mode = first.mode,
+                targetHalfDegrees = first.temperature,
+                fanStep = first.fanStep,
+                remainingSeconds = first.minutes * 60,
+                programStep = 1,
+                note = "Demo: \"${schedule.name}\" is shown as running. Nothing is sent to a BedJet.",
+            )
+        }
     }
 }

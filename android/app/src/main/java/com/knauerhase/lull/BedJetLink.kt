@@ -14,6 +14,8 @@ data class BedJetState(
     val targetHalfDegrees: Int = 0,
     val fanStep: Int = 0,
     val remainingSeconds: Int = 0,
+    /** The phase of a running schedule, counting from 1. Zero when no schedule is running. */
+    val programStep: Int = 0,
     val note: String? = null,
 )
 
@@ -34,4 +36,7 @@ interface BedJetLink {
     fun setFan(step: Int)
 
     fun setRuntime(minutes: Int)
+
+    /** Writes [schedule] to the unit's slot [slot] (or its sequence, on a V2) and starts it. */
+    fun startSchedule(schedule: Schedule, slot: Int)
 }

@@ -33,7 +33,10 @@ data class V2Info(
     val firmware: Int,
     /** True when sequence steps use the longer format and the run command takes the time of day. */
     val extendedSequences: Boolean,
-)
+) {
+    /** Older firmware ignores sequences, so the app refuses to write one. */
+    val runsSequences: Boolean get() = firmware >= V2.SEQUENCE_FIRMWARE
+}
 
 /** Status from a BedJet 3. The last four fields come from the second half of the status packet, when present. */
 data class V3Status(
@@ -103,3 +106,36 @@ fun temperatureRange(mode: Mode, v2: Boolean): IntRange =
 
 /** False when the unit sets the temperature itself for [mode], so the app shows the fan speed instead. */
 fun Mode.adjustsTemperature(v2: Boolean): Boolean = temperatureRange(this, v2).let { it.first != it.last }
+
+private val quietHeat = intArrayOf(0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xc6, 0x66, 0x66, 0x41)
+private val strongHeat = intArrayOf(0xcc, 0xcc, 0xcc, 0xcc, 0x44, 0x44, 0x44, 0x42, 0x21, 0x11, 0x11)
+
+/**
+ * Heat hours allowed, by fan step (rows) and target from 30 C in half-degree pairs (columns). Each byte holds two
+ * temperatures: the even half-degree in the high nibble and the odd one in the low. Copied from the iOS app.
+ */
+private val heatHours: List<IntArray> = List(5) { quietHeat } + listOf(
+    intArrayOf(0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xc6, 0x66, 0x64, 0x44, 0x21),
+    intArrayOf(0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xc6, 0x64, 0x44, 0x44, 0x21),
+    intArrayOf(0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xc6, 0x64, 0x42, 0x22, 0x21),
+    intArrayOf(0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xc4, 0x44, 0x42, 0x22, 0x21),
+    intArrayOf(0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xc4, 0x44, 0x42, 0x11, 0x11),
+    intArrayOf(0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xc4, 0x44, 0x44, 0x42, 0x11, 0x11),
+    intArrayOf(0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0x44, 0x44, 0x42, 0x21, 0x11, 0x11),
+    intArrayOf(0xcc, 0xcc, 0xcc, 0xcc, 0xc4, 0x44, 0x44, 0x42, 0x21, 0x11, 0x11),
+    intArrayOf(0xcc, 0xcc, 0xcc, 0xcc, 0xc4, 0x44, 0x44, 0x42, 0x21, 0x11, 0x11),
+) + List(6) { strongHeat }
+
+/**
+ * Longest a heat run may last at [temperature] (half degrees C) and [fanStep], in minutes. Heat is cut off sooner the
+ * hotter and faster the air, so the unit refuses a longer step.
+ */
+fun heatLongestMinutes(temperature: Int, fanStep: Int): Int {
+    val maxMinutes = 11 * 60 + 59
+    if (temperature < 60) return maxMinutes
+    val row = heatHours[fanStep.coerceIn(0, heatHours.size - 1)]
+    val offset = temperature - 60
+    val pair = row[minOf(offset shr 1, row.size - 1)]
+    val hours = if ((offset and 1) == 0) pair shr 4 else pair and 0x0F
+    return minOf(hours * 60, maxMinutes)
+}
