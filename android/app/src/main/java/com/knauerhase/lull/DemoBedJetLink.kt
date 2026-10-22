@@ -32,6 +32,7 @@ class DemoBedJetLink : BedJetLink {
             current.copy(
                 mode = next,
                 targetHalfDegrees = current.targetHalfDegrees.coerceIn(temperatureRange(next, v2 = false)),
+                fanStep = if (next == Mode.TURBO) 19 else current.fanStep,
                 remainingSeconds = if (next == Mode.STANDBY) 0 else minOf(next.maxMinutes, MAX_SCHEDULE_MINUTES) * 60,
                 programStep = 0,
             )

@@ -17,6 +17,7 @@ object LullColors {
     val Secondary = Color.White.copy(alpha = 0.55f)
     val Tertiary = Color.White.copy(alpha = 0.32f)
     val Cool = Color(0xFF4DA3FF)
+    val DeepCool = Color(0xFF2B5CFF)
     val Warm = Color(0xFFFF8A3D)
     val Hot = Color(0xFFFF4D2E)
     val GentleHeat = Color(0xFFFFB240)

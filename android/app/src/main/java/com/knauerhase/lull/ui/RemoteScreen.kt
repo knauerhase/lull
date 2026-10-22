@@ -84,8 +84,14 @@ fun RemoteScreen(link: BedJetLink, state: BedJetState) {
             Card {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     TemperatureControl(state, enabled, link::setTarget)
-                    FanControl(state, enabled, tint, link::setFan)
-                    RuntimeControl(state, enabled, tint, link::setRuntime)
+                    if (mode == Mode.TURBO) {
+                        // Turbo is fixed at full fan for ten minutes, so the readouts just show what the unit is doing.
+                        ReadoutRow("Fan", "${state.fanPercent()}%")
+                        ReadoutRow("Turns off in", formatDuration((state.remainingSeconds + 59) / 60))
+                    } else {
+                        FanControl(state, enabled, tint, link::setFan)
+                        RuntimeControl(state, enabled, tint, link::setRuntime)
+                    }
                 }
             }
         }
@@ -142,7 +148,9 @@ private fun ClimateOrb(state: BedJetState) {
             Text(
                 text = when {
                     state.connection != Connection.READY -> connectionText(state)
-                    isOn -> "Fan ${state.fanPercent()}% · Air ${fahrenheit(state.actualHalfDegrees)}°"
+                    isOn && mode.adjustsTemperature(state.isV2()) ->
+                        "Fan ${state.fanPercent()}% · Air ${fahrenheit(state.actualHalfDegrees)}°"
+                    isOn -> "Air ${fahrenheit(state.actualHalfDegrees)}°"
                     else -> "Room ${fahrenheit(state.actualHalfDegrees)}°"
                 },
                 fontSize = 15.sp,

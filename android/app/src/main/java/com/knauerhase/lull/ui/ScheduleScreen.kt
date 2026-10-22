@@ -91,6 +91,7 @@ private fun SlotList(
                         OutlinedButton(onClick = { onEdit(index) }) { Text("Build a schedule") }
                     } else {
                         Text(schedule.name, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                        NightCurve(schedule.phases, modifier = Modifier.fillMaxWidth().height(90.dp), lineWidth = 2.dp)
                         Text(
                             text = "${schedule.phases.size} phases · ${formatDuration(schedule.totalMinutes)}",
                             fontSize = 14.sp,
@@ -136,6 +137,8 @@ private fun ScheduleEditor(
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+        NightCurve(phases.toList(), modifier = Modifier.fillMaxWidth().height(150.dp))
+
         OutlinedTextField(
             value = name,
             onValueChange = { name = it.take(15) },

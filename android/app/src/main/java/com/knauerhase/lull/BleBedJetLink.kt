@@ -192,6 +192,11 @@ class BleBedJetLink(context: Context) : BedJetLink {
             scope.launch {
                 delay(1_200)
                 setRuntime(minOf(mode.maxMinutes, MAX_SCHEDULE_MINUTES))
+                if (mode == Mode.TURBO) {
+                    // Turbo always runs at full fan. The second command waits for the unit to report the first.
+                    delay(1_200)
+                    setFan(19)
+                }
             }
         }
     }
