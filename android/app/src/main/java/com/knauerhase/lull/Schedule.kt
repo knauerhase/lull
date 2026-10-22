@@ -14,8 +14,8 @@ const val SAVED_SLOTS = 3
 /** A night is at most ten hours, as in the iOS app. */
 const val MAX_SCHEDULE_MINUTES = 10 * 60
 
-/** A BedJet V2 holds one sequence of at most this many phases. */
-const val MAX_PHASES = 31
+/** Phases in one schedule: a BedJet 3 program slot holds 32 steps, and a V2 sequence holds 31. */
+fun maxPhases(v2: Boolean): Int = if (v2) 31 else 32
 
 private val V2_MODES = setOf(Mode.HEAT, Mode.TURBO, Mode.COOL, Mode.WAIT)
 
@@ -36,6 +36,7 @@ data class Schedule(val name: String, val phases: List<Phase>) {
     fun problemFor(v2: Boolean): String? = when {
         phases.isEmpty() -> "Add at least one phase first."
         totalMinutes > MAX_SCHEDULE_MINUTES -> "A schedule can run up to 10 hours."
+        phases.size > maxPhases(v2) -> "This BedJet holds up to ${maxPhases(v2)} phases in a schedule."
         phases.any { it.minutes < 1 || it.minutes > it.limitMinutes } -> "A phase is longer than its mode allows."
         v2 && phases.any { it.mode !in V2_MODES } ->
             "A BedJet V2 doesn't have Gentle heat or Dry. Change those phases to Heat or Cool."

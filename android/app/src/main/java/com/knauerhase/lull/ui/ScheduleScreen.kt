@@ -1,5 +1,6 @@
 package com.knauerhase.lull.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,16 +24,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.knauerhase.lull.BedJetState
 import com.knauerhase.lull.Connection
-import com.knauerhase.lull.MAX_PHASES
 import com.knauerhase.lull.MAX_SCHEDULE_MINUTES
 import com.knauerhase.lull.Phase
 import com.knauerhase.lull.Schedule
+import com.knauerhase.lull.maxPhases
 import com.knauerhase.lull.bedjet.Mode
 import com.knauerhase.lull.bedjet.temperatureRange
 import com.knauerhase.lull.defaultPhase
@@ -152,21 +157,21 @@ private fun ScheduleEditor(
                 v2 = v2,
                 number = index + 1,
                 phase = phase,
+                budgetLeft = MAX_SCHEDULE_MINUTES - (total - phase.minutes),
                 onChange = { phases[index] = it },
                 onRemove = { phases.removeAt(index) },
             )
         }
 
-        Text(
-            text = "Total ${formatDuration(total)} of 10 hr",
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Medium,
-            color = if (total > MAX_SCHEDULE_MINUTES) LullColors.Hot else LullColors.Secondary,
-        )
+        TimeBudget(phases.toList())
 
         OutlinedButton(
-            onClick = { phases.add(defaultPhase(Mode.COOL)) },
-            enabled = phases.size < MAX_PHASES && total < MAX_SCHEDULE_MINUTES,
+            onClick = {
+                // A new phase takes at most what's left of the ten hours.
+                val fresh = defaultPhase(Mode.COOL)
+                phases.add(fresh.copy(minutes = minOf(fresh.minutes, MAX_SCHEDULE_MINUTES - total)))
+            },
+            enabled = phases.size < maxPhases(v2) && total < MAX_SCHEDULE_MINUTES,
         ) { Text("Add phase") }
 
         problem?.let { Text(text = it, fontSize = 13.sp, color = LullColors.Hot) }
@@ -188,7 +193,14 @@ private fun ScheduleEditor(
 }
 
 @Composable
-private fun PhaseCard(v2: Boolean, number: Int, phase: Phase, onChange: (Phase) -> Unit, onRemove: () -> Unit) {
+private fun PhaseCard(
+    v2: Boolean,
+    number: Int,
+    phase: Phase,
+    budgetLeft: Int,
+    onChange: (Phase) -> Unit,
+    onRemove: () -> Unit,
+) {
     Card {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -248,19 +260,57 @@ private fun PhaseCard(v2: Boolean, number: Int, phase: Phase, onChange: (Phase) 
                 )
             }
 
-            val limit = phase.limitMinutes
-            val step = if (limit <= 15) 1 else 5
-            LabeledSlider(
-                title = "Duration",
-                valueText = formatDuration(phase.minutes),
-                value = phase.minutes.coerceIn(step, limit).toFloat(),
-                range = step.toFloat()..limit.toFloat(),
-                steps = (limit - step) / step - 1,
-                enabled = true,
-                tint = phase.mode.tint(),
-                onValueChange = { onChange(phase.copy(minutes = ((it / step).roundToInt() * step).coerceIn(step, limit))) },
-                onDone = {},
+            // The slider stops at the mode's own limit or at what's left of the ten hours, whichever comes first.
+            val limit = minOf(phase.limitMinutes, budgetLeft)
+            val step = if (phase.limitMinutes <= 15) 1 else 5
+            if (limit > step) {
+                LabeledSlider(
+                    title = "Duration",
+                    valueText = formatDuration(phase.minutes),
+                    value = phase.minutes.coerceIn(step, limit).toFloat(),
+                    range = step.toFloat()..limit.toFloat(),
+                    steps = (limit - step) / step - 1,
+                    enabled = true,
+                    tint = phase.mode.tint(),
+                    onValueChange = { onChange(phase.copy(minutes = ((it / step).roundToInt() * step).coerceIn(step, limit))) },
+                    onDone = {},
+                )
+            } else {
+                ReadoutRow("Duration", formatDuration(phase.minutes))
+            }
+            if (limit < phase.limitMinutes) {
+                Text("Stops at 10 hours in total.", fontSize = 12.sp, color = LullColors.Secondary)
+            }
+        }
+    }
+}
+
+/** How much of the ten hours the phases use, drawn as a bar with a full mark at the end. */
+@Composable
+private fun TimeBudget(phases: List<Phase>) {
+    val total = phases.sumOf { it.minutes }
+    val left = MAX_SCHEDULE_MINUTES - total
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Canvas(Modifier.fillMaxWidth().height(10.dp)) {
+            drawRoundRect(LullColors.Raised, cornerRadius = CornerRadius(5.dp.toPx()))
+            var x = 0f
+            phases.forEach { phase ->
+                val width = size.width * phase.minutes / MAX_SCHEDULE_MINUTES
+                drawRect(phase.mode.tint(), topLeft = Offset(x, 0f), size = Size(width, size.height))
+                x += width
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = if (left <= 0) "Full at 10 hours" else "${formatDuration(total)} of 10 hours",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = if (left <= 0) LullColors.Warm else LullColors.Secondary,
             )
+            Spacer(Modifier.weight(1f))
+            if (left > 0) {
+                Text("${formatDuration(left)} left", fontSize = 14.sp, color = LullColors.Secondary)
+            }
         }
     }
 }
