@@ -278,9 +278,6 @@ private fun PhaseCard(
             } else {
                 ReadoutRow("Duration", formatDuration(phase.minutes))
             }
-            if (limit < phase.limitMinutes) {
-                Text("Stops at 10 hours in total.", fontSize = 12.sp, color = LullColors.Secondary)
-            }
         }
     }
 }
@@ -302,14 +299,14 @@ private fun TimeBudget(phases: List<Phase>) {
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = if (left <= 0) "Full at 10 hours" else "${formatDuration(total)} of 10 hours",
+                text = if (left <= 0) "Schedule ${formatDuration(total)}, full" else "Schedule ${formatDuration(total)}",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 color = if (left <= 0) LullColors.Warm else LullColors.Secondary,
             )
             Spacer(Modifier.weight(1f))
             if (left > 0) {
-                Text("${formatDuration(left)} left", fontSize = 14.sp, color = LullColors.Secondary)
+                Text("${formatDuration(left)} left of 10 hours", fontSize = 14.sp, color = LullColors.Secondary)
             }
         }
     }
