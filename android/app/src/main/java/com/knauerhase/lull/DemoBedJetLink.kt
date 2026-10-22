@@ -1,6 +1,8 @@
 package com.knauerhase.lull
 
 import com.knauerhase.lull.bedjet.Mode
+import com.knauerhase.lull.bedjet.maxMinutes
+import com.knauerhase.lull.bedjet.temperatureRange
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,13 +31,14 @@ class DemoBedJetLink : BedJetLink {
             val next = if (mode == Mode.STANDBY || mode == current.mode) Mode.STANDBY else mode
             current.copy(
                 mode = next,
-                remainingSeconds = if (next == Mode.STANDBY) 0 else maxOf(current.remainingSeconds, 60 * 60),
+                targetHalfDegrees = current.targetHalfDegrees.coerceIn(temperatureRange(next, v2 = false)),
+                remainingSeconds = if (next == Mode.STANDBY) 0 else maxOf(current.remainingSeconds, 60 * 60).coerceAtMost(next.maxMinutes * 60),
             )
         }
     }
 
     override fun setTarget(halfDegrees: Int) {
-        _state.update { it.copy(targetHalfDegrees = halfDegrees.coerceIn(44, 80)) }
+        _state.update { it.copy(targetHalfDegrees = halfDegrees.coerceIn(temperatureRange(it.mode, v2 = false))) }
     }
 
     override fun setFan(step: Int) {
@@ -43,6 +46,6 @@ class DemoBedJetLink : BedJetLink {
     }
 
     override fun setRuntime(minutes: Int) {
-        _state.update { it.copy(remainingSeconds = minutes * 60) }
+        _state.update { it.copy(remainingSeconds = minutes.coerceIn(1, it.mode.maxMinutes) * 60) }
     }
 }

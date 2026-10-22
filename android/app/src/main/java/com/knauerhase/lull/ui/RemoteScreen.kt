@@ -42,6 +42,9 @@ import com.knauerhase.lull.BedJetLink
 import com.knauerhase.lull.BedJetState
 import com.knauerhase.lull.Connection
 import com.knauerhase.lull.bedjet.Mode
+import com.knauerhase.lull.bedjet.adjustsTemperature
+import com.knauerhase.lull.bedjet.maxMinutes
+import com.knauerhase.lull.bedjet.temperatureRange
 import kotlin.math.roundToInt
 
 /** Direct control: the same layout as the iOS Remote tab. */
@@ -120,7 +123,7 @@ private fun ClimateOrb(state: BedJetState) {
                 text = when {
                     state.connection != Connection.READY -> "--"
                     !isOn -> "Off"
-                    mode == Mode.TURBO -> "${state.fanPercent()}%"
+                    !mode.adjustsTemperature(state.isV2()) -> "${state.fanPercent()}%"
                     else -> "${fahrenheit(state.targetHalfDegrees)}°"
                 },
                 fontSize = 60.sp,
@@ -209,20 +212,25 @@ private fun Card(content: @Composable () -> Unit) {
 
 @Composable
 private fun TemperatureControl(state: BedJetState, enabled: Boolean, onChange: (Int) -> Unit) {
-    val target = state.targetHalfDegrees.toFloat()
-    val range = 44f..80f
-    var local by remember { mutableFloatStateOf(target) }
-    LaunchedEffect(target) { local = target }
-    LabeledSlider(
-        title = "Temperature",
-        valueText = "${fahrenheit(local.roundToInt())}°",
-        value = local,
-        range = range,
-        enabled = enabled,
-        tint = state.mode.tint(),
-        onValueChange = { local = it },
-        onDone = { onChange(local.roundToInt()) },
-    )
+    val range = temperatureRange(state.mode, state.isV2())
+    if (range.first == range.last) {
+        ReadoutRow("Temperature", "${fahrenheit(range.first)}°")
+    } else {
+        val target = state.targetHalfDegrees.coerceIn(range).toFloat()
+        var local by remember { mutableFloatStateOf(target) }
+        LaunchedEffect(target) { local = target }
+        LabeledSlider(
+            title = "Temperature",
+            valueText = "${fahrenheit(local.roundToInt())}°",
+            value = local,
+            range = range.first.toFloat()..range.last.toFloat(),
+            steps = range.last - range.first - 1,
+            enabled = enabled,
+            tint = state.mode.tint(),
+            onValueChange = { local = it },
+            onDone = { onChange(local.roundToInt()) },
+        )
+    }
 }
 
 @Composable
@@ -245,20 +253,35 @@ private fun FanControl(state: BedJetState, enabled: Boolean, tint: Color, onChan
 
 @Composable
 private fun RuntimeControl(state: BedJetState, enabled: Boolean, tint: Color, onChange: (Int) -> Unit) {
-    val minutes = ((state.remainingSeconds + 59) / 60).toFloat()
+    val longest = state.mode.maxMinutes
+    val step = when {
+        longest <= 15 -> 1
+        longest <= 240 -> 5
+        else -> 15
+    }
+    val minutes = ((state.remainingSeconds + 59) / 60).coerceIn(step, longest).toFloat()
     var local by remember { mutableFloatStateOf(minutes) }
     LaunchedEffect(minutes) { local = minutes }
     LabeledSlider(
         title = "Turns off in",
         valueText = formatDuration(local.roundToInt()),
         value = local,
-        range = 15f..720f,
-        steps = 46,
+        range = step.toFloat()..longest.toFloat(),
+        steps = (longest - step) / step - 1,
         enabled = enabled,
         tint = tint,
         onValueChange = { local = it },
         onDone = { onChange(local.roundToInt()) },
     )
+}
+
+@Composable
+private fun ReadoutRow(title: String, value: String) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+        Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = LullColors.Secondary)
+        Spacer(Modifier.weight(1f))
+        Text(value, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+    }
 }
 
 @Composable
@@ -314,6 +337,8 @@ private fun connectionText(state: BedJetState): String = when (state.connection)
 }
 
 private fun BedJetState.fanPercent(): Int = (fanStep + 1) * 5
+
+private fun BedJetState.isV2(): Boolean = generation == "BedJet V2"
 
 /** Half degrees Celsius to whole degrees Fahrenheit, as the iOS app shows them. */
 private fun fahrenheit(halfDegrees: Int): Int = ((halfDegrees / 2.0) * 9 / 5 + 32).roundToInt()

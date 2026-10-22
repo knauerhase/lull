@@ -18,6 +18,8 @@ import com.knauerhase.lull.bedjet.Mode
 import com.knauerhase.lull.bedjet.V2
 import com.knauerhase.lull.bedjet.V2Status
 import com.knauerhase.lull.bedjet.V3
+import com.knauerhase.lull.bedjet.maxMinutes
+import com.knauerhase.lull.bedjet.temperatureRange
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -167,7 +169,8 @@ class BleBedJetLink(context: Context) : BedJetLink {
     }
 
     override fun setTarget(halfDegrees: Int) {
-        if (isV2) v2Scene { V2.scene(it, temperature = halfDegrees) } else send(V3.setTemperature(halfDegrees))
+        val clamped = halfDegrees.coerceIn(temperatureRange(_state.value.mode, isV2))
+        if (isV2) v2Scene { V2.scene(it, temperature = clamped) } else send(V3.setTemperature(clamped))
     }
 
     override fun setFan(step: Int) {
@@ -175,7 +178,8 @@ class BleBedJetLink(context: Context) : BedJetLink {
     }
 
     override fun setRuntime(minutes: Int) {
-        if (isV2) v2Scene { V2.scene(it, seconds = minutes * 60) } else send(V3.setRuntime(minutes))
+        val clamped = minutes.coerceIn(1, _state.value.mode.maxMinutes)
+        if (isV2) v2Scene { V2.scene(it, seconds = clamped * 60) } else send(V3.setRuntime(clamped))
     }
 
     /** The V2 sends temperature, fan and timer together, so it needs the latest status to repeat what isn't changing. */

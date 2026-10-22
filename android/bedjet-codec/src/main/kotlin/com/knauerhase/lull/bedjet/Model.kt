@@ -66,3 +66,40 @@ data class V3Step(
 internal fun bytes(vararg values: Int): ByteArray = ByteArray(values.size) { values[it].toByte() }
 
 internal fun ByteArray.u(index: Int): Int = this[index].toInt() and 0xFF
+
+/** Half degrees Celsius the unit accepts for [Mode] on a BedJet 3, as the iOS app enforces them. */
+val Mode.temperatureRange: IntRange
+    get() = when (this) {
+        Mode.HEAT -> 45..80
+        Mode.TURBO -> 86..86
+        Mode.EXTENDED_HEAT -> 38..67
+        Mode.COOL -> 38..62
+        Mode.DRY -> 40..80
+        Mode.STANDBY, Mode.WAIT -> 80..80
+    }
+
+/** Longest a single run may last in this mode, in minutes. Turbo's 10 minutes is the unit's own safety timer. */
+val Mode.maxMinutes: Int
+    get() = when (this) {
+        Mode.TURBO -> 10
+        Mode.HEAT -> 240
+        else -> 11 * 60 + 59
+    }
+
+/**
+ * The range the unit accepts while running [mode]. A V2 only adjusts Heat, and holds Cool and Turbo at fixed targets.
+ */
+fun temperatureRange(mode: Mode, v2: Boolean): IntRange =
+    if (!v2) {
+        mode.temperatureRange
+    } else {
+        when (mode) {
+            Mode.HEAT -> V2.HEAT_RANGE
+            Mode.COOL -> 44..44
+            Mode.TURBO -> 86..86
+            else -> 80..80
+        }
+    }
+
+/** False when the unit sets the temperature itself for [mode], so the app shows the fan speed instead. */
+fun Mode.adjustsTemperature(v2: Boolean): Boolean = temperatureRange(this, v2).let { it.first != it.last }
