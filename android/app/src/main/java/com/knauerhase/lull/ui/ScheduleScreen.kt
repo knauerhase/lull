@@ -260,24 +260,24 @@ private fun PhaseCard(
                 )
             }
 
-            // The slider stops at the mode's own limit or at what's left of the ten hours, whichever comes first.
-            val limit = minOf(phase.limitMinutes, budgetLeft)
+            // The range is the mode's own limit, so this slider doesn't move when another phase changes. Dragging
+            // stops at what's left of the ten hours.
+            val cap = minOf(phase.limitMinutes, budgetLeft)
             val step = if (phase.limitMinutes <= 15) 1 else 5
-            if (limit > step) {
-                LabeledSlider(
-                    title = "Duration",
-                    valueText = formatDuration(phase.minutes),
-                    value = phase.minutes.coerceIn(step, limit).toFloat(),
-                    range = step.toFloat()..limit.toFloat(),
-                    steps = (limit - step) / step - 1,
-                    enabled = true,
-                    tint = phase.mode.tint(),
-                    onValueChange = { onChange(phase.copy(minutes = ((it / step).roundToInt() * step).coerceIn(step, limit))) },
-                    onDone = {},
-                )
-            } else {
-                ReadoutRow("Duration", formatDuration(phase.minutes))
-            }
+            LabeledSlider(
+                title = "Duration",
+                valueText = formatDuration(phase.minutes),
+                value = phase.minutes.coerceIn(step, phase.limitMinutes).toFloat(),
+                range = step.toFloat()..phase.limitMinutes.toFloat(),
+                steps = (phase.limitMinutes - step) / step - 1,
+                enabled = true,
+                tint = phase.mode.tint(),
+                onValueChange = {
+                    val next = ((it / step).roundToInt() * step).coerceAtMost(cap).coerceAtLeast(1)
+                    onChange(phase.copy(minutes = next))
+                },
+                onDone = {},
+            )
         }
     }
 }
