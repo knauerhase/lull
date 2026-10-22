@@ -1,8 +1,10 @@
 package com.knauerhase.lull.ui
 
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import com.knauerhase.lull.bedjet.Mode
 
@@ -44,6 +46,8 @@ fun LullTheme(content: @Composable () -> Unit) {
             primary = Color.White,
             onPrimary = Color.Black,
         ),
-        content = content,
-    )
+    ) {
+        // Without this, text with no explicit color is black, which disappears on the black background.
+        CompositionLocalProvider(LocalContentColor provides Color.White, content = content)
+    }
 }
