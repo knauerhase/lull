@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -60,6 +61,8 @@ private fun LullApp(ble: BleBedJetLink, demo: DemoBedJetLink) {
     val link: BedJetLink = if (useDemo) demo else ble
     val state by link.state.collectAsState()
 
+    BackHandler(enabled = useDemo) { useDemo = false }
+
     val permissions = arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
     val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -92,6 +95,7 @@ private fun LullApp(ble: BleBedJetLink, demo: DemoBedJetLink) {
         Header(
             title = "Remote",
             state = state,
+            demo = useDemo,
             onConnect = onConnect,
             onDisconnect = { if (useDemo) useDemo = false else ble.disconnect() },
             onDemo = onDemo,
@@ -104,6 +108,7 @@ private fun LullApp(ble: BleBedJetLink, demo: DemoBedJetLink) {
 private fun Header(
     title: String,
     state: BedJetState,
+    demo: Boolean,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onDemo: () -> Unit,
@@ -117,7 +122,7 @@ private fun Header(
         Text(title, fontSize = 34.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.weight(1f))
         when (state.connection) {
-            Connection.READY -> OutlinedButton(onClick = onDisconnect) {
+            Connection.READY -> if (!demo) OutlinedButton(onClick = onDisconnect) {
                 Text(state.generation ?: "Connected")
             }
             Connection.IDLE, Connection.FAILED -> Column(horizontalAlignment = Alignment.End) {
@@ -134,6 +139,16 @@ private fun Header(
                 modifier = Modifier.width(120.dp),
             )
         }
+    }
+    if (demo) {
+        Text(
+            text = "Demo mode. Press back to leave.",
+            color = LullColors.Secondary,
+            fontSize = 12.sp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+        )
     }
     state.note?.let {
         Text(
